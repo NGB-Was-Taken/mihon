@@ -20,6 +20,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.core.net.toUri
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -35,6 +36,7 @@ import eu.kanade.tachiyomi.data.backup.restore.RestoreOptions
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import kotlinx.coroutines.flow.update
 import mihon.core.viewmodel.StateViewModel
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.LazyColumnWithAction
@@ -192,7 +194,9 @@ class RestoreBackupViewModel(
     }
 
     init {
-        validate(uri.toUri())
+        viewModelScope.launchIO {
+            validate(uri.toUri())
+        }
     }
 
     fun toggle(setter: (RestoreOptions, Boolean) -> RestoreOptions, enabled: Boolean) {
@@ -211,7 +215,7 @@ class RestoreBackupViewModel(
         )
     }
 
-    private fun validate(uri: Uri) {
+    private suspend fun validate(uri: Uri) {
         val results = try {
             BackupFileValidator(context).validate(uri)
         } catch (e: Exception) {
