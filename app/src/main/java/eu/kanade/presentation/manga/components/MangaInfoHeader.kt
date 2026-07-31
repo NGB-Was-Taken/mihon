@@ -91,6 +91,8 @@ import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import mihon.domain.library.model.search.MangaField
+import mihon.domain.library.model.search.quoteIfNecessary
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.findChildOfType
@@ -476,7 +478,14 @@ private fun ColumnScope.MangaContentInfo(
                             )
                         }
                     },
-                    onClick = { if (!author.isNullOrBlank()) doSearch(author, true) },
+                    onClick = {
+                        if (!author.isNullOrBlank()) {
+                            doSearch(
+                                "${MangaField.AUTHOR.primaryKey}:${author.quoteIfNecessary()}",
+                                false,
+                            )
+                        }
+                    },
                 ),
             textAlign = textAlign,
         )
@@ -499,7 +508,7 @@ private fun ColumnScope.MangaContentInfo(
                 modifier = Modifier
                     .clickableNoIndication(
                         onLongClick = { context.copyToClipboard(artist, artist) },
-                        onClick = { doSearch(artist, true) },
+                        onClick = { doSearch("${MangaField.ARTIST.primaryKey}:${artist.quoteIfNecessary()}", false) },
                     ),
                 textAlign = textAlign,
             )
@@ -555,8 +564,9 @@ private fun ColumnScope.MangaContentInfo(
             Text(
                 text = sourceName,
                 modifier = Modifier.clickableNoIndication {
+                    val field = if (isStubSource) MangaField.SOURCE_ID.primaryKey else MangaField.SOURCE.primaryKey
                     doSearch(
-                        sourceName,
+                        "$field:${sourceName.quoteIfNecessary()}",
                         false,
                     )
                 },

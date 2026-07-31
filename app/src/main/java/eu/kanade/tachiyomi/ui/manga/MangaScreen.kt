@@ -56,6 +56,8 @@ import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.domain.library.model.search.MangaField
+import mihon.domain.library.model.search.quoteIfNecessary
 import mihon.feature.migration.config.MigrationConfigScreen
 import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.lang.withIOContext
@@ -379,7 +381,7 @@ class MangaScreen(
             navigator.pop()
             previousController.searchGenre(genreName)
         } else {
-            performSearch(navigator, genreName, global = false)
+            performSearch(navigator, "${MangaField.GENRE.primaryKey}:${genreName.quoteIfNecessary()}", global = false)
         }
     }
 

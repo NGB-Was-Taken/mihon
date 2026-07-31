@@ -12,6 +12,8 @@ enum class MangaField(vararg val aliases: String, val fieldOnly: Boolean = false
     SOURCE_ID("source_id", "sourceid", "src_id", "srcid", fieldOnly = true),
     ;
 
+    val primaryKey get() = aliases.first()
+
     companion object {
         private val lookup = entries.flatMap { field ->
             field.aliases.map { it.lowercase() to field }
@@ -90,3 +92,11 @@ data class ComparisonQueryNode(
     val queryComparator: Comparator,
     val negated: Boolean,
 ) : QueryNode
+
+fun String.quoteIfNecessary(): String {
+    if (none(Char::isWhitespace)) return this
+
+    // Strings with both quote types default to double quotes since parser doesn't support escaping
+    val quote = if (contains('\'')) '"' else '\''
+    return "$quote$this$quote"
+}
