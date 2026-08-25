@@ -2,6 +2,9 @@ package eu.kanade.tachiyomi.data.backup.restore
 
 import android.content.Context
 import android.net.Uri
+import dev.zacsweers.metro.Assisted
+import dev.zacsweers.metro.AssistedFactory
+import dev.zacsweers.metro.AssistedInject
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
@@ -26,8 +29,6 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.Database
 import tachiyomi.i18n.MR
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -38,17 +39,24 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.incrementAndFetch
 
 @OptIn(ExperimentalAtomicApi::class)
+@AssistedInject
 class BackupRestorer(
+    @Assisted private val notifier: BackupNotifier,
+    @Assisted private val isSync: Boolean,
     private val context: Context,
-    private val notifier: BackupNotifier,
-    private val isSync: Boolean,
-
-    private val database: Database = Injekt.get(),
-    private val categoriesRestorer: CategoriesRestorer = CategoriesRestorer(),
-    private val preferenceRestorer: PreferenceRestorer = PreferenceRestorer(context),
-    private val extensionStoreRestorer: ExtensionStoreRestorer = ExtensionStoreRestorer(),
-    private val mangaRestorer: MangaRestorer = MangaRestorer(),
+    private val database: Database,
+    private val downloadCache: DownloadCache,
+    private val categoriesRestorer: CategoriesRestorer,
+    private val preferenceRestorer: PreferenceRestorer,
+    private val extensionStoreRestorer: ExtensionStoreRestorer,
+    private val mangaRestorer: MangaRestorer,
+    private val backupDecoder: BackupDecoder,
 ) {
+
+    @AssistedFactory
+    fun interface Factory {
+        fun create(notifier: BackupNotifier, isSync: Boolean): BackupRestorer
+    }
 
     private var restoreAmount = 0
     private val restoreProgress = AtomicInt(0)
@@ -67,7 +75,7 @@ class BackupRestorer(
         // Invalidate download cache to ensure UI reflects any restored downloads
         if (options.libraryEntries) {
             try {
-                Injekt.get<DownloadCache>().invalidateCache()
+                downloadCache.invalidateCache()
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to invalidate download cache after restore" }
             }
@@ -87,7 +95,6 @@ class BackupRestorer(
     }
 
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
-        val backupDecoder = BackupDecoder(context)
         val backupMangaFlow = backupDecoder.decodeManga(uri)
         val (mangaCount, backup) = backupDecoder.decodeMetadata(uri)
 
@@ -152,13 +159,30 @@ class BackupRestorer(
         backupMangas
             .chunked(100)
             .collect { chunk ->
-                database.transaction {
+                val restoredAsBatch = try {
+                    database.transaction {
+                        chunk.forEach {
+                            ensureActive()
+                            mangaRestorer.restore(it, backupCategories)
+                        }
+                    }
+                    true
+                } catch (e: Exception) {
+                    ensureActive()
+                    logcat(LogPriority.WARN, e) { "Batch restore failed, retrying entry by entry" }
+                    false
+                }
+
+                if (restoredAsBatch) {
+                    restoreProgress.addAndFetch(chunk.size)
+                } else {
                     chunk.forEach {
                         ensureActive()
 
                         try {
                             mangaRestorer.restore(it, backupCategories)
                         } catch (e: Exception) {
+                            ensureActive()
                             val sourceName = sourceMapping[it.source] ?: it.source.toString()
                             errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
                         }
@@ -166,6 +190,7 @@ class BackupRestorer(
                         restoreProgress.incrementAndFetch()
                     }
                 }
+
                 notifier.showRestoreProgress(chunk.last().title, restoreProgress.load(), restoreAmount, isSync)
             }
     }
